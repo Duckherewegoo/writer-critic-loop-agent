@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "langgraph-multi-agent"
+version = "0.1.0"
+description = "基于 LangGraph 与 Gradio 的多智能体协作写作平台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "DakeGinger", email = "dakeginger@qq.com" }
+]
+keywords = ["langgraph", "multi-agent", "gradio", "llm", "writing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "langchain>=1.3.0",
+    "langgraph>=1.2.0",
+    "langchain-openai>=1.3.0",
+    "langchain-community>=0.4.0",
+    "gradio>=6.0.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+# 如果你以后想用命令行一键启动 gradio 服务，可以用这个命令
+# (需先 pip install -e .)
+writer-app = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/DakeGinger/langgraph-multi-agent"
+Repository = "https://github.com/DakeGinger/langgraph-multi-agent.git"
+
+[tool.setuptools.packages.find]
+# 平铺结构，把这三个文件夹当作模块打包
+where = ["."]
+include = ["agents*", "graph*", "utils*"]
+
+# ==========================
+# 工具链配置 (干净利落)
+# ==========================
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = [
+    "E501",    # 行长度交由 ruff format 处理
+    "B008",    # 允许 Gradio 的 gr.Progress() 写在默认参数里
+    "EXE002",  # 忽略“文件有执行权限但没 shebang”的警告
+    "RUF013",  # (可选) 允许隐式 Optional，如果你不想把 str = None 改成 str | None = None
+    "BLE001",  # (可选) 允许测试脚本捕获 except Exception
+    "DTZ005",  # (可选) 允许使用不带时区的 datetime.now()
+    "RUF001", # 字符串中有歧义字符
+    "RUF002", # 文档字符串中有歧义字符
+    "RUF003", # 注释中有歧义字符
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

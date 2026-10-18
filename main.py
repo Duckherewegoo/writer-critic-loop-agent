@@ -3,8 +3,9 @@
 提供Gradio Web界面，用户可以输入主题，系统自动完成研究、写作、审核、编辑全流程
 """
 
-import asyncio
+import json
 import os
+import time
 from typing import Any
 
 import gradio as gr
@@ -32,12 +33,6 @@ class MultiAgentWritingSystem:
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
-        """
-        初始化系统
-
-        Args:
-            config: 配置字典
-        """
         self.config = config or {}
         self.llm = self._init_llm()
         self.workflow = self._init_workflow()
@@ -45,12 +40,6 @@ class MultiAgentWritingSystem:
         ensure_directory(self.output_dir)
 
     def _init_llm(self) -> ChatOpenAI:
-        """
-        初始化语言模型
-
-        Returns:
-            语言模型实例
-        """
         llm_config = self.config.get("llm", {})
         model = llm_config.get("model", "qwen-plus")
         temperature = llm_config.get("temperature", 0.7)
@@ -70,12 +59,6 @@ class MultiAgentWritingSystem:
         return ChatOpenAI(**kwargs)
 
     def _init_workflow(self):
-        """
-        初始化工作流
-
-        Returns:
-            编译后的工作流
-        """
         workflow_config = WorkflowConfig(
             llm=self.llm,
             max_iterations=self.config.get("max_iterations", 3),
@@ -84,52 +67,18 @@ class MultiAgentWritingSystem:
             reviewer_config=self.config.get("reviewer"),
             editor_config=self.config.get("editor"),
         )
-
         return create_workflow(workflow_config)
 
-    async def run_writing_task(
-        self,
-        topic: str,
-        max_iterations: int = 3,
-        progress_callback=None,
-    ) -> dict[str, Any]:
-        """
-        运行写作任务
-
-        Args:
-            topic: 写作主题
-            max_iterations: 最大迭代次数
-            progress_callback: 进度回调函数
-
-        Returns:
-            最终结果字典
-        """
-        # 创建初始状态
+    async def run_writing_task(self, topic: str, max_iterations: int = 3) -> dict[str, Any]:
+        """运行写作任务"""
         initial_state = create_initial_state(
             topic=topic,
             max_iterations=max_iterations,
         )
 
-        # 记录每一步的状态
-        steps = []
-
-        def step_callback(state):
-            """步骤回调"""
-            current_step = state.get("current_step", "unknown")
-            steps.append(state.copy())
-
-            if progress_callback:
-                progress_info = {
-                    "step": current_step,
-                    "iteration": state.get("iteration_count", 0),
-                    "total_steps": max_iterations + 2,  # research + write*n + review*n + edit
-                }
-                asyncio.create_task(progress_callback(progress_info))
-
-        # 运行工作流
+        # 直接运行工作流，不搞虚假的进度回调
         final_state = await self.workflow.ainvoke(initial_state)
 
-        # 保存结果
         self._save_result(final_state)
 
         return {
@@ -143,22 +92,14 @@ class MultiAgentWritingSystem:
         }
 
     def _save_result(self, state: dict[str, Any]) -> str:
-        """
-        保存结果到文件
-
-        Args:
-            state: 最终状态
-
-        Returns:
-            保存的文件路径
-        """
         topic = state.get("topic", "untitled")
         timestamp = get_timestamp()
 
-        # 保存最终文章
+        # 保存最终文章（✅ 修复 F841：把 topic 加进文件名，安全且更有用）
         final_content = state.get("final_content", "")
         if final_content:
-            filename = f"final_{timestamp}.md"
+            safe_topic = "".join(c for c in topic if c.isalnum() or c in " -_")[:20].strip()
+            filename = f"final_{safe_topic}_{timestamp}.md"
             filepath = os.path.join(self.output_dir, filename)
             save_to_file(final_content, filepath)
 
@@ -166,7 +107,6 @@ class MultiAgentWritingSystem:
         state_filename = f"state_{timestamp}.json"
         state_filepath = os.path.join(self.output_dir, state_filename)
 
-        import json
         serializable_state = {}
         for key, value in state.items():
             if isinstance(value, (str, int, float, bool, list, dict, type(None))):
@@ -181,15 +121,7 @@ class MultiAgentWritingSystem:
 
 
 def create_gradio_interface(system: MultiAgentWritingSystem):
-    """
-    创建Gradio界面
-
-    Args:
-        system: 多智能体写作系统实例
-
-    Returns:
-        Gradio界面
-    """
+    """创建Gradio界面"""
 
     async def generate_article(
         topic: str,
@@ -198,68 +130,62 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
         max_iterations: int,
         api_key: str,
         base_url: str,
-        progress=gr.Progress(),
     ):
-        """
-        生成文章
-
-        Args:
-            topic: 写作主题
-            model: 模型名称
-            temperature: 温度
-            max_iterations: 最大迭代次数
-            api_key: API密钥
-            base_url: API基础URL
-            progress: 进度条
-
-        Returns:
-            生成结果
-        """
         if not topic.strip():
             raise gr.Error("请输入写作主题")
 
-        # 更新配置
+        # 记录开始时间
+        start_time = time.perf_counter()
+
+        # 更新环境变量
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
         if base_url:
             os.environ["OPENAI_BASE_URL"] = base_url
 
-        # 重新初始化LLM
-        system.config["llm"] = {
-            "model": model,
-            "temperature": temperature,
+        # ✅ 严谨鲁棒：创建一个临时的 system 实例，避免多用户并发时污染全局状态
+        temp_config = {
+            "llm": {"model": model, "temperature": temperature},
+            "max_iterations": max_iterations,
+            "output_dir": system.output_dir
         }
-        system.llm = system._init_llm()
-        system.workflow = system._init_workflow()
+        local_system = MultiAgentWritingSystem(temp_config)
 
-        # 进度跟踪
-        progress(0.1, desc="正在初始化...")
+        try:
+            # 运行写作任务（移除了 progress）
+            result = await local_system.run_writing_task(
+                topic=topic,
+                max_iterations=max_iterations,
+            )
 
-        # 运行写作任务
-        result = await system.run_writing_task(
-            topic=topic,
-            max_iterations=max_iterations,
-        )
+            # 格式化输出
+            research_notes_str = format_research_notes(result["research_notes"])
+            word_count = count_words(result["final_content"])
+            title = extract_title(result["final_content"]) or topic
 
-        progress(1.0, desc="完成！")
+            # 计算耗时（秒表）
+            elapsed_time = time.perf_counter() - start_time
+            info_str = (
+                f"**标题**：{title}  \n"
+                f"**字数**：{word_count} 字  \n"
+                f"**迭代次数**：{result['iteration_count']} 次  \n"
+                f"**耗时**：{elapsed_time:.2f} 秒"
+            )
 
-        # 格式化输出
-        research_notes_str = format_research_notes(result["research_notes"])
-        word_count = count_words(result["final_content"])
-        title = extract_title(result["final_content"]) or topic
+            return (
+                result["final_content"],
+                research_notes_str,
+                result["review_feedback"],
+                info_str,
+            )
 
-        return (
-            result["final_content"],
-            research_notes_str,
-            result["review_feedback"],
-            f"标题：{title}\n字数：{word_count}字\n迭代次数：{result['iteration_count']}次",
-        )
+        except Exception as e:
+            elapsed_time = time.perf_counter() - start_time
+            # ✅ 抛出 Gradio 的友好错误提示，并附带耗时
+            raise gr.Error(f"生成失败 (耗时 {elapsed_time:.2f}s): {e!s}") from e
 
     # 创建界面
-    with gr.Blocks(
-        title="多智能体协作写作系统"
-        # theme=gr.themes.Soft(),
-    ) as demo:
+    with gr.Blocks(title="多智能体协作写作系统") as demo:
         gr.Markdown(
             """
             # 🤖 多智能体协作写作系统
@@ -267,14 +193,6 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
             基于 LangGraph + LangChain + Gradio 构建的多智能体协作写作平台。
             系统包含**研究专家**、**写作专家**、**审核专家**、**总编辑**四个智能体，
             自动完成从资料收集到最终润色的完整写作流程。
-
-            ## 工作流程
-            1. **研究阶段**：收集主题相关的信息和素材
-            2. **写作阶段**：根据研究素材撰写文章草稿
-            3. **审核阶段**：对文章进行多维度审核，提供修改建议
-            4. **编辑阶段**：对文章进行最终润色和优化
-
-            *审核不通过时会自动返回写作阶段进行修改，最多迭代指定次数*
             """
         )
 
@@ -355,6 +273,7 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
                             value="*审核反馈将显示在这里*",
                         )
 
+                # ✅ 这个组件专门用来展示耗时和字数
                 info_output = gr.Markdown(
                     label="统计信息",
                     value="",
@@ -396,35 +315,17 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
             ],
         )
 
-        gr.Markdown(
-            """
-            ---
-            **技术栈**：LangGraph · LangChain · Gradio · Python 3.10+
-
-            *本系统需要配置 DashScope API Key 才能正常运行*
-            """
-        )
-
     return demo
 
 
 def main():
-    """主函数"""
-    # 创建系统实例
     system = MultiAgentWritingSystem()
-
-    # 创建Gradio界面
     demo = create_gradio_interface(system)
-
-    # 启动服务
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
-        # share=False,
         debug=False,
         show_error=True
-        # stream_output=False,  # 强制关闭流式输出
-        # auto_reload=False     # 关闭自动重载
     )
 
 

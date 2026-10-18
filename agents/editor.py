@@ -3,6 +3,7 @@
 负责对文章进行最终编辑和润色，确保文章质量
 """
 
+
 from langchain_core.language_models import BaseChatModel
 
 from .base_agent import AgentState, BaseAgent
@@ -19,7 +20,7 @@ class EditorAgent(BaseAgent):
         llm: BaseChatModel,
         name: str = "总编辑",
         description: str = "资深总编辑，擅长文章润色和优化，确保文章达到出版级别",
-        system_prompt: str = None,
+        system_prompt: str | None = None,
     ):
         """
         初始化编辑智能体

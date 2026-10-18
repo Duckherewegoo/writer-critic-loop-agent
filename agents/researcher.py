@@ -4,6 +4,7 @@
 """
 
 
+
 from langchain_core.language_models import BaseChatModel
 
 from .base_agent import AgentState, BaseAgent
@@ -20,7 +21,7 @@ class ResearchAgent(BaseAgent):
         llm: BaseChatModel,
         name: str = "研究专家",
         description: str = "专业的研究人员，擅长收集信息、整理资料、进行深度分析",
-        system_prompt: str = None,
+        system_prompt: str | None = None,
     ):
         """
         初始化研究智能体

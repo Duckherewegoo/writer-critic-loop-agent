@@ -3,6 +3,7 @@
 负责审核文章草稿，提供修改意见和建议
 """
 
+
 from langchain_core.language_models import BaseChatModel
 
 from .base_agent import AgentState, BaseAgent
@@ -19,7 +20,7 @@ class ReviewerAgent(BaseAgent):
         llm: BaseChatModel,
         name: str = "审核专家",
         description: str = "专业的编辑和审稿人，擅长发现文章中的问题并提供改进建议",
-        system_prompt: str = None,
+        system_prompt: str | None = None,
     ):
         """
         初始化审核智能体
@@ -145,12 +146,12 @@ class ReviewerAgent(BaseAgent):
 
         # 检查是否有明确的正面评价
         for keyword in positive_keywords:
-            if keyword in review_response:
+            if keyword in response_lower:
                 return False
 
         # 检查是否有明确的负面评价
         for keyword in negative_keywords:
-            if keyword in review_response:
+            if keyword in response_lower:
                 return True
 
         # 默认需要修改（保守策略）

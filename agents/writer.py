@@ -3,6 +3,7 @@
 负责根据研究素材撰写文章草稿
 """
 
+
 from langchain_core.language_models import BaseChatModel
 
 from .base_agent import AgentState, BaseAgent
@@ -19,7 +20,7 @@ class WriterAgent(BaseAgent):
         llm: BaseChatModel,
         name: str = "写作专家",
         description: str = "专业的作家，擅长撰写各种类型的文章，文笔优美，逻辑清晰",
-        system_prompt: str = None,
+        system_prompt: str | None = None,
     ):
         """
         初始化写作智能体

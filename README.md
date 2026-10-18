@@ -43,7 +43,7 @@ venv\Scripts\activate  # Windows
 ### 2. 安装依赖
 
 ```bash
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -e .
 ```
 
 ### 3. 配置环境变量

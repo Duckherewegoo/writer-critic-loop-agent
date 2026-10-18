@@ -5,7 +5,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def format_research_notes(notes: list[str]) -> str:
@@ -155,7 +155,7 @@ def load_from_file(filepath: str, encoding: str = 'utf-8') -> str:
     Returns:
         文件内容
     """
-    with open(filepath, 'r', encoding=encoding) as f:
+    with open(filepath, encoding=encoding) as f:
         return f.read()
 
 
@@ -189,7 +189,7 @@ def get_timestamp() -> str:
     Returns:
         时间戳字符串
     """
-    return datetime.now().strftime('%Y%m%d_%H%M%S')
+    return datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
 
 
 def ensure_directory(dirpath: str) -> None:
