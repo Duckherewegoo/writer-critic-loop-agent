@@ -54,12 +54,12 @@ pip install -e .
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
+编辑 `.env` 文件(注意：具体使用的模型和温度请在网页界面中选择)：
 
 ```
 OPENAI_API_KEY=你的OpenAI API密钥
 OPENAI_BASE_URL=https://api.openai.com/v1  # 可选，自定义API地址
-MODEL_NAME=gpt-3.5-turbo
+MODEL_NAME=gpt-3.5-turbo # 模型示例
 TEMPERATURE=0.7
 MAX_ITERATIONS=3
 ```
@@ -77,33 +77,40 @@ python main.py
 ### 使用说明
 
 1. 在左侧输入写作主题
-2. （可选）在高级设置中调整参数
-3. 点击「开始写作」按钮
+2. （可选）在高级设置中调整模型、温度、迭代次数等参数
+3. 点击「开始写作」按钮(按钮会转圈，结束后会显示耗时)
 4. 等待系统完成写作流程
-5. 在右侧查看最终文章、研究笔记和审核反馈
+5. 在右侧查看最终文章、研究笔记和审核反馈,所有生成内容会自动保存到 outputs/ 目录
+
+(你可以通过运行 python test.py 来快速测试你的 API Key 是否连通)
 
 ## 项目结构
 
 ```
 langgraph-multi-agent/
-├── agents/                 # 智能体模块
-│   ├── __init__.py
-│   ├── base_agent.py       # 基础智能体类
-│   ├── researcher.py       # 研究智能体
-│   ├── writer.py           # 写作智能体
-│   ├── reviewer.py         # 审核智能体
-│   └── editor.py           # 编辑智能体
-├── graph/                  # 工作流模块
-│   ├── __init__.py
-│   └── workflow.py         # LangGraph工作流定义
-├── utils/                  # 工具函数模块
-│   ├── __init__.py
-│   └── helpers.py          # 辅助函数
-├── outputs/                # 输出目录（自动创建）
-├── main.py                 # 主程序入口
-├── requirements.txt        # 依赖列表
-├── .env.example            # 环境变量示例
-└── README.md               # 项目说明
+├── agents              # 智能体定义 (研究、写作、审核、编辑)
+│   ├── base_agent.py
+│   ├── editor.py
+│   ├── __init__.py
+│   ├── researcher.py
+│   ├── reviewer.py
+│   └── writer.py
+├── graph               # LangGraph 核心 (状态、节点、工作流构建)
+│   ├── config.py
+│   ├── helper.py
+│   ├── __init__.py
+│   ├── nodes.py
+│   ├── state.py
+│   └── workflow.py
+├── LICENSE
+├── main.py             # Gradio Web UI 入口
+├── outputs             # 运行结果自动保存目录
+├── pyproject.toml      # 项目配置与依赖管理
+├── README.md
+├── test.py             # 独立的 API 连通性测试脚本
+└── utils               # 辅助工具 (文件保存、字数统计等)
+    ├── helpers.py
+    └── __init__.py
 ```
 
 ## 技术栈
@@ -137,5 +144,4 @@ langgraph-multi-agent/
 - 确保文章达到出版级别
 
 ## 许可证
-
 GPL-3.0
