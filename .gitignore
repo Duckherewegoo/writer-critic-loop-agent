@@ -37,6 +37,8 @@ ENV/
 # ── 运行时产物 ──
 logs/
 *.log
+*.md
+*.json
 exports/
 eval_reports/
 reviews/
