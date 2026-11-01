@@ -4,14 +4,9 @@ from .state import WorkflowState
 
 
 def state_to_agent_state(state: WorkflowState) -> AgentState:
-    """
-    将工作流状态转换为智能体状态
+    """将 WorkflowState 复制为 AgentState。
 
-    Args:
-        state: 工作流状态
-
-    Returns:
-        智能体状态
+    字段一一对应；缺失字段用 AgentState 的默认值兜底。
     """
     return AgentState(
         topic=state.get("topic", ""),
@@ -27,15 +22,11 @@ def state_to_agent_state(state: WorkflowState) -> AgentState:
 
 
 def agent_state_to_state(agent_state: AgentState, state: WorkflowState) -> WorkflowState:
-    """
-    将智能体状态更新到工作流状态
+    """将 AgentState 回写为 WorkflowState（全量覆盖）。
 
-    Args:
-        agent_state: 智能体状态
-        state: 原始工作流状态
-
-    Returns:
-        更新后的工作流状态
+    全量覆盖意味着：agent 未显式保留的字段会退化为 AgentState 的默认值。
+    子类必须用 `state.model_copy(update={...})` 构造返回，不能裸建
+    `AgentState(draft_content=...)`——后者会把 research_notes 等字段冲成默认值。
     """
     return {
         **state,
@@ -51,30 +42,4 @@ def agent_state_to_state(agent_state: AgentState, state: WorkflowState) -> Workf
     }
 
 
-def create_initial_state(
-    topic: str,
-    max_iterations: int = 3,
-) -> WorkflowState:
-    """
-    创建初始状态
-
-    Args:
-        topic: 写作主题
-        max_iterations: 最大迭代次数
-
-    Returns:
-        初始工作流状态
-    """
-    return {
-        "topic": topic,
-        "research_notes": [],
-        "draft_content": "",
-        "review_feedback": "",
-        "final_content": "",
-        "current_step": "research",
-        "iteration_count": 0,
-        "max_iterations": max_iterations,
-        "metadata": {},
-    }
-
-__all__ = ["agent_state_to_state", "create_initial_state", "state_to_agent_state"]
+__all__ = ["agent_state_to_state", "state_to_agent_state"]

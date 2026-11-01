@@ -4,6 +4,7 @@
 """
 
 from abc import ABC, abstractmethod
+import json
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -52,7 +53,6 @@ class BaseAgent(ABC):
         self.system_prompt = system_prompt or self._get_default_system_prompt()
 
     def _get_default_system_prompt(self) -> str:
-        """获取默认的系统提示词"""
         return f"你是{self.name}，{self.description}。请专业、认真地完成你的工作。"
 
     def _build_messages(
@@ -60,44 +60,46 @@ class BaseAgent(ABC):
         human_message: str,
         context: dict[str, Any] | None = None,
     ) -> list[BaseMessage]:
+        """构建消息列表。
+
+        context 以 JSON 序列化后并入首条 system 消息，避免连续两条 system——
+        部分模型（如 qwen）对连续 system 支持不一致。
         """
-        构建消息列表
-
-        Args:
-            human_message: 用户消息
-            context: 上下文信息
-
-        Returns:
-            消息列表
-        """
-        messages = [
-            SystemMessage(content=self.system_prompt),
-        ]
-
+        system_content = self.system_prompt
         if context:
-            context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
-            messages.append(SystemMessage(content=f"上下文信息：\n{context_str}"))
+            context_str = json.dumps(context, ensure_ascii=False, indent=2, default=str)
+            system_content = f"{system_content}\n\n上下文信息：\n{context_str}"
 
-        messages.append(HumanMessage(content=human_message))
-        return messages
+        return [
+            SystemMessage(content=system_content),
+            HumanMessage(content=human_message),
+        ]
 
     async def _call_llm(
         self,
         messages: list[BaseMessage],
         **kwargs,
     ) -> str:
-        """
-        调用语言模型
+        """调用语言模型并把返回内容收敛为纯文本。
 
-        Args:
-            messages: 消息列表
-            **kwargs: 其他参数
-
-        Returns:
-            模型回复内容
+        LangChain 新版 AIMessage.content 可能是 str 或多模态列表；
+        下游 AgentState 的字符串字段只接受 str，所以这里统一拼接为字符串。
         """
         response = await self.llm.ainvoke(messages, **kwargs)
-        return response.content
+        content = response.content
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    parts.append(str(item.get("text", "")))
+                else:
+                    parts.append(str(item))
+            return "".join(parts)
+        return str(content)
 
     @abstractmethod
     async def run(self, state: AgentState) -> AgentState:
