@@ -2,7 +2,7 @@
 
 基于 **LangGraph + LangChain + Gradio** 构建的多智能体协作写作平台。
 
-> **版本** `0.1.0` ｜ **Python** `3.10+` ｜ **许可证** [GPL-3.0-or-later](LICENSE)
+> **版本** `0.2.0` ｜ **Python** `3.10+` ｜ **许可证** [GPL-3.0-or-later](LICENSE)
 > 四个智能体分工协作：研究 → 写作 → 审核 → 总编辑，审核不通过自动回到写作重写，最多重写次数可配置。
 
 ---
@@ -322,4 +322,4 @@ pytest
 
 ---
 
-Made with ❤️ by JiangDake
+Made with ❤️ by DakeGinger
