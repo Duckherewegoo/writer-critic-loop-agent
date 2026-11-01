@@ -50,10 +50,7 @@ def build_workflow_nodes(config: WorkflowConfig) -> dict[str, typing.Any]:
     async def review_node(state: WorkflowState) -> WorkflowState:
         agent_state = _state_to_agent_state(state)
         result = await reviewer.run(agent_state)
-        new_state = _agent_state_to_state(result, state)
-        # 每完成一次 review 视为一轮迭代；显式 +1 防止 helper 未处理时死循环。
-        new_state["iteration_count"] = state.get("iteration_count", 0) + 1
-        return new_state
+        return _agent_state_to_state(result, state)
 
     async def edit_node(state: WorkflowState) -> WorkflowState:
         agent_state = _state_to_agent_state(state)

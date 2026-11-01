@@ -3,7 +3,7 @@
 负责收集信息、进行研究，为写作提供素材和参考
 """
 
-
+import re
 
 from langchain_core.language_models import BaseChatModel
 
@@ -61,7 +61,6 @@ class ResearchAgent(BaseAgent):
         Returns:
             更新后的状态
         """
-        # 构建研究提示
         research_prompt = f"""请对以下主题进行深入研究：
 
 主题：{state.topic}
@@ -76,23 +75,18 @@ class ResearchAgent(BaseAgent):
 
 请确保每条笔记都是具体、有价值的信息，不要泛泛而谈。"""
 
-        # 构建上下文
         context = {
             "当前迭代次数": state.iteration_count,
             "已有的研究笔记数量": len(state.research_notes),
         }
 
-        # 调用LLM进行研究
         messages = self._build_messages(research_prompt, context)
         response = await self._call_llm(messages)
 
-        # 解析研究笔记
         research_notes = self._parse_research_notes(response)
 
-        # 更新状态
         state.research_notes.extend(research_notes)
         state.current_step = "write"
-        state.iteration_count += 1
         state.metadata["research_agent_output"] = response
 
         return state
@@ -112,22 +106,24 @@ class ResearchAgent(BaseAgent):
 
         for line in lines:
             line = line.strip()
-            # 跳过空行
             if not line:
                 continue
-            # 处理列表项（支持多种格式：1.、-、*等）
-            if line[0].isdigit() and "." in line[:3]:
-                # 数字列表格式：1. xxx
-                note = line.split(".", 1)[1].strip()
-                if note:
-                    notes.append(note)
-            elif line.startswith(("-", "*", "•")):
-                # 符号列表格式
+
+            # 数字列表：1. / 1、 / 1) 前缀，支持两位以上编号
+            match = re.match(r"^\d+[.、)]\s*(.+)$", line)
+            if match:
+                notes.append(match.group(1).strip())
+                continue
+
+            # 符号列表：- / * / •
+            if line.startswith(("-", "*", "•")):
                 note = line[1:].strip()
                 if note:
                     notes.append(note)
-            elif len(line) > 20:
-                # 长行直接作为笔记
+                continue
+
+            # 兜底：长行视为一条笔记，避免丢失非列表格式的有效内容
+            if len(line) > 20:
                 notes.append(line)
 
         # 如果没有解析出笔记，就把整个回复作为一条笔记

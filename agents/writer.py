@@ -61,12 +61,10 @@ class WriterAgent(BaseAgent):
         Returns:
             更新后的状态
         """
-        # 构建研究素材
         research_notes_str = "\n".join(
             [f"{i+1}. {note}" for i, note in enumerate(state.research_notes)]
         )
 
-        # 构建写作提示
         writing_prompt = f"""请根据以下研究素材，撰写一篇关于"{state.topic}"的文章：
 
 研究素材：
@@ -82,29 +80,29 @@ class WriterAgent(BaseAgent):
 
 请直接输出完整的文章内容。"""
 
-        # 如果有审核反馈，需要根据反馈修改
-        if state.review_feedback and state.iteration_count > 1:
+        # 只要有审核反馈就注入：原 `iteration_count > 1` 的前置条件在
+        # writer 不自增时恒为 False，导致反馈永远不生效。
+        if state.review_feedback:
             writing_prompt += f"""
 
-注意：这是第{state.iteration_count}次修改，请根据以下审核反馈进行修改：
+注意：请根据以下审核反馈进行修改：
 {state.review_feedback}
 
 请在保持文章原有优点的基础上，针对反馈意见进行改进。"""
 
-        # 构建上下文
         context = {
             "当前迭代次数": state.iteration_count,
             "研究笔记数量": len(state.research_notes),
             "是否有审核反馈": bool(state.review_feedback),
         }
 
-        # 调用LLM进行写作
         messages = self._build_messages(writing_prompt, context)
         response = await self._call_llm(messages)
 
-        # 更新状态
         state.draft_content = response
         state.current_step = "review"
         state.metadata["writer_agent_output"] = response
+        # 每次写作或重写计为一轮迭代，max_iterations 限制总写作次数
+        state.iteration_count += 1
 
         return state

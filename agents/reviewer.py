@@ -3,6 +3,7 @@
 负责审核文章草稿，提供修改意见和建议
 """
 
+import re
 
 from langchain_core.language_models import BaseChatModel
 
@@ -62,7 +63,6 @@ class ReviewerAgent(BaseAgent):
         Returns:
             更新后的状态
         """
-        # 构建审核提示
         review_prompt = f"""请审核以下关于"{state.topic}"的文章：
 
 文章内容：
@@ -80,25 +80,22 @@ class ReviewerAgent(BaseAgent):
 - 总体评价（优秀/良好/一般/需要修改）
 - 具体的优点（至少3点）
 - 具体的改进建议（至少3点，要具体可操作）
-- 是否需要重新修改（是/否）
 
-请以清晰的格式输出你的审核意见。"""
+最后一行必须单独输出以下格式之一，不要加其他内容：
+NEEDS_REVISION: YES
+NEEDS_REVISION: NO"""
 
-        # 构建上下文
         context = {
             "当前迭代次数": state.iteration_count,
             "最大迭代次数": state.max_iterations,
             "文章字数": len(state.draft_content),
         }
 
-        # 调用LLM进行审核
         messages = self._build_messages(review_prompt, context)
         response = await self._call_llm(messages)
 
-        # 判断是否需要继续修改
-        needs_revision = self._needs_revision(response, state)
+        needs_revision = self._needs_revision(response)
 
-        # 更新状态
         state.review_feedback = response
         state.metadata["reviewer_agent_output"] = response
         state.metadata["needs_revision"] = needs_revision
@@ -110,49 +107,17 @@ class ReviewerAgent(BaseAgent):
 
         return state
 
-    def _needs_revision(self, review_response: str, state: AgentState) -> bool:
+    def _needs_revision(self, review_response: str) -> bool:
+        """解析审核回复中的 NEEDS_REVISION 标记。
+
+        标记解析失败时返回 True：宁可多重写一次，也不放过有问题的文章；
+        外层有 max_iterations 上限兜底，不会无限循环。
         """
-        判断是否需要修改
-
-        Args:
-            review_response: 审核回复
-            state: 当前状态
-
-        Returns:
-            是否需要修改
-        """
-        # 简单的判断逻辑：检查回复中是否包含需要修改的关键词
-        negative_keywords = [
-            "需要修改",
-            "建议修改",
-            "需要改进",
-            "存在问题",
-            "不足",
-            "缺点",
-            "一般",
-            "较差",
-        ]
-
-        positive_keywords = [
-            "优秀",
-            "很好",
-            "可以通过",
-            "直接通过",
-            "质量很高",
-            "无需修改",
-        ]
-
-        response_lower = review_response.lower()
-
-        # 检查是否有明确的正面评价
-        for keyword in positive_keywords:
-            if keyword in response_lower:
-                return False
-
-        # 检查是否有明确的负面评价
-        for keyword in negative_keywords:
-            if keyword in response_lower:
-                return True
-
-        # 默认需要修改（保守策略）
-        return state.iteration_count < state.max_iterations
+        match = re.search(
+            r"NEEDS_REVISION\s*[:：]\s*(YES|NO)",
+            review_response,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).upper() == "YES"
+        return True
