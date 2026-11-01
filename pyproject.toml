@@ -3,9 +3,10 @@ requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "langgraph-multi-agent"
+name = "writer-critic-loop-agent"
 version = "0.2.0"
-description = "基于 LangGraph 与 Gradio 的多智能体协作写作平台"
+description = "基于 LangGraph 的 Writer–Critic 反思式写作工作流（研究/写作/审核/编辑四角色）"
+keywords = ["langgraph", "writer-critic", "reflection", "gradio", "writing", "llm"]
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
