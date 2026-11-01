@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "langgraph-multi-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "基于 LangGraph 与 Gradio 的多智能体协作写作平台"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL-3.0-or-later" }
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "DakeGinger", email = "dakeginger@qq.com" }
 ]
@@ -17,7 +18,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -28,28 +28,36 @@ dependencies = [
     "langchain>=1.3.0",
     "langgraph>=1.2.0",
     "langchain-openai>=1.3.0",
-    "langchain-community>=0.4.0",
     "gradio>=6.0.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
 [project.scripts]
-# 如果你以后想用命令行一键启动 gradio 服务，可以用这个命令
-# (需先 pip install -e .)
+# 需先 pip install -e ".[dev]"，然后可直接 `writer-app` 启动
 writer-app = "main:main"
 
 [project.urls]
-Homepage = "https://github.com/DakeGinger/langgraph-multi-agent"
 Repository = "https://github.com/DakeGinger/langgraph-multi-agent.git"
+Issues = "https://github.com/DakeGinger/langgraph-multi-agent/issues"
+
+# 平铺结构：main.py 是顶层模块，三个目录是包
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.setuptools.packages.find]
-# 平铺结构，把这三个文件夹当作模块打包
 where = ["."]
 include = ["agents*", "graph*", "utils*"]
 
 # ==========================
-# 工具链配置 (干净利落)
+# 工具链配置
 # ==========================
 
 [tool.ruff]
@@ -60,16 +68,21 @@ target-version = "py310"
 select = ["E", "F", "I", "UP", "B", "RUF"]
 ignore = [
     "E501",    # 行长度交由 ruff format 处理
-    "B008",    # 允许 Gradio 的 gr.Progress() 写在默认参数里
     "EXE002",  # 忽略“文件有执行权限但没 shebang”的警告
-    "RUF013",  # (可选) 允许隐式 Optional，如果你不想把 str = None 改成 str | None = None
-    "BLE001",  # (可选) 允许测试脚本捕获 except Exception
-    "DTZ005",  # (可选) 允许使用不带时区的 datetime.now()
-    "RUF001", # 字符串中有歧义字符
-    "RUF002", # 文档字符串中有歧义字符
-    "RUF003", # 注释中有歧义字符
+    "RUF001",  # 字符串中有歧义字符（中文全角）
+    "RUF002",  # 文档字符串中有歧义字符
+    "RUF003",  # 注释中有歧义字符
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试脚本允许捕获宽泛异常
+"test.py" = ["BLE001"]
+"tests/**" = ["BLE001"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
