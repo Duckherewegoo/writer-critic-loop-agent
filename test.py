@@ -21,7 +21,7 @@ try:
         temperature=0.7
     )
     res = llm.invoke("你好，请回复一句话测试")
-    print("✅ API 调用成功！")
+    print("API 调用成功！")
     print("返回内容：", res.content)
 except Exception as e:
     print("❌ API 调用失败！")

@@ -1,52 +1,63 @@
-"""
-工作流定义
+"""工作流定义
 使用LangGraph构建多智能体协作写作工作流
 """
+
+from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
 from .config import WorkflowConfig
-from .nodes import (
-    edit_node,
-    research_node,
-    review_node,
-    should_continue_writing,
-    write_node,
-)
+from .nodes import build_workflow_nodes
 from .state import WorkflowState
 
 
+def create_initial_state(
+    topic: str,
+    *,
+    max_iterations: int = 3,
+) -> WorkflowState:
+    """构造工作流初始状态。
+
+    max_iterations 只是 TypedDict 字段兜底；循环是否继续以 WorkflowConfig.max_iterations 为准。
+
+    需要注入中间状态做测试时，直接构造 dict 传给 workflow.invoke，或对调用方
+    （如 MultiAgentWritingSystem.run_writing_task）monkeypatch，不走本函数参数。
+    """
+    return {
+        "topic": topic,
+        "research_notes": [],
+        "draft_content": "",
+        "review_feedback": "",
+        "final_content": "",
+        "current_step": "research",
+        "iteration_count": 0,
+        "max_iterations": max_iterations,
+        "metadata": {},
+    }
+
+
 def create_workflow(config: WorkflowConfig):
-    """
-    创建多智能体协作写作工作流
+    """创建多智能体协作写作工作流。
 
-    Args:
-        config: 工作流配置
-
-    Returns:
-        编译后的LangGraph工作流
+    config 通过 build_workflow_nodes 闭包注入到每个节点，
+    确保 WorkflowConfig.llm / max_iterations 真正流到执行层。
     """
-   
-    # 创建状态图
     workflow = StateGraph(WorkflowState)
+    nodes = build_workflow_nodes(config)
 
-    # 添加节点
-    workflow.add_node("research", research_node)
-    workflow.add_node("write", write_node)
-    workflow.add_node("review", review_node)
-    workflow.add_node("edit", edit_node)
+    workflow.add_node("research", nodes["research"])
+    workflow.add_node("write", nodes["write"])
+    workflow.add_node("review", nodes["review"])
+    workflow.add_node("edit", nodes["edit"])
 
-    # 设置入口点
     workflow.set_entry_point("research")
 
-    # 添加边
     workflow.add_edge("research", "write")
     workflow.add_edge("write", "review")
 
-    # 添加条件边（审核后决定是继续修改还是进入编辑）
     workflow.add_conditional_edges(
         "review",
-        should_continue_writing,
+        nodes["route"],
         {
             "write": "write",
             "edit": "edit",
@@ -55,9 +66,7 @@ def create_workflow(config: WorkflowConfig):
 
     workflow.add_edge("edit", END)
 
-    # 编译工作流
-    compiled_workflow = workflow.compile()
+    return workflow.compile()
 
-    return compiled_workflow
 
-__all__ = ["create_workflow"]
+__all__ = ["create_initial_state", "create_workflow"]

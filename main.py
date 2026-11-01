@@ -3,7 +3,9 @@
 提供Gradio Web界面，用户可以输入主题，系统自动完成研究、写作、审核、编辑全流程
 """
 
+import asyncio
 import json
+import logging
 import os
 import time
 from typing import Any
@@ -22,8 +24,10 @@ from utils.helpers import (
     save_to_file,
 )
 
-# 加载环境变量
+# 启动时加载 .env，仅作为默认配置来源；运行时不再写进程级环境变量。
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class MultiAgentWritingSystem:
@@ -59,6 +63,7 @@ class MultiAgentWritingSystem:
         return ChatOpenAI(**kwargs)
 
     def _init_workflow(self):
+        # 图在构造时编译一次；低并发场景无需缓存，高并发可按配置加缓存。
         workflow_config = WorkflowConfig(
             llm=self.llm,
             max_iterations=self.config.get("max_iterations", 3),
@@ -69,17 +74,17 @@ class MultiAgentWritingSystem:
         )
         return create_workflow(workflow_config)
 
-    async def run_writing_task(self, topic: str, max_iterations: int = 3) -> dict[str, Any]:
-        """运行写作任务"""
+    async def run_writing_task(self, topic: str) -> dict[str, Any]:
+        """运行写作任务；max_iterations 由构造配置决定，避免双来源。"""
         initial_state = create_initial_state(
             topic=topic,
-            max_iterations=max_iterations,
+            max_iterations=self.config.get("max_iterations", 3),
         )
 
-        # 直接运行工作流，不搞虚假的进度回调
         final_state = await self.workflow.ainvoke(initial_state)
 
-        self._save_result(final_state)
+        # 文件 IO 是同步操作，丢线程池避免阻塞事件循环。
+        await asyncio.to_thread(self._save_result, final_state)
 
         return {
             "topic": topic,
@@ -91,11 +96,12 @@ class MultiAgentWritingSystem:
             "metadata": final_state.get("metadata", {}),
         }
 
-    def _save_result(self, state: dict[str, Any]) -> str:
+    def _save_result(self, state: dict[str, Any]) -> None:
+        """保存最终文章与完整状态到 output_dir。"""
         topic = state.get("topic", "untitled")
         timestamp = get_timestamp()
 
-        # 保存最终文章（✅ 修复 F841：把 topic 加进文件名，安全且更有用）
+        # 文件名带上 topic 便于人工检索；截断并过滤非法字符。
         final_content = state.get("final_content", "")
         if final_content:
             safe_topic = "".join(c for c in topic if c.isalnum() or c in " -_")[:20].strip()
@@ -103,7 +109,7 @@ class MultiAgentWritingSystem:
             filepath = os.path.join(self.output_dir, filename)
             save_to_file(final_content, filepath)
 
-        # 保存完整状态
+        # 保存完整状态；非 JSON 原生类型转 str 兜底，防止序列化失败。
         state_filename = f"state_{timestamp}.json"
         state_filepath = os.path.join(self.output_dir, state_filename)
 
@@ -116,8 +122,6 @@ class MultiAgentWritingSystem:
 
         with open(state_filepath, 'w', encoding='utf-8') as f:
             json.dump(serializable_state, f, ensure_ascii=False, indent=2)
-
-        return state_filepath
 
 
 def create_gradio_interface(system: MultiAgentWritingSystem):
@@ -134,36 +138,30 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
         if not topic.strip():
             raise gr.Error("请输入写作主题")
 
-        # 记录开始时间
         start_time = time.perf_counter()
 
-        # 更新环境变量
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
-        if base_url:
-            os.environ["OPENAI_BASE_URL"] = base_url
-
-        # ✅ 严谨鲁棒：创建一个临时的 system 实例，避免多用户并发时污染全局状态
+        # 每次请求用独立实例，凭证只进本次配置，不写进程级 os.environ。
+        # 未填写时回退到 .env 中的默认值，由 _init_llm 负责。
         temp_config = {
-            "llm": {"model": model, "temperature": temperature},
+            "llm": {
+                "model": model,
+                "temperature": temperature,
+                "api_key": api_key or None,
+                "base_url": base_url or None,
+            },
             "max_iterations": max_iterations,
             "output_dir": system.output_dir
         }
-        local_system = MultiAgentWritingSystem(temp_config)
 
         try:
-            # 运行写作任务（移除了 progress）
-            result = await local_system.run_writing_task(
-                topic=topic,
-                max_iterations=max_iterations,
-            )
+            local_system = MultiAgentWritingSystem(temp_config)
+            result = await local_system.run_writing_task(topic=topic)
 
             # 格式化输出
             research_notes_str = format_research_notes(result["research_notes"])
             word_count = count_words(result["final_content"])
             title = extract_title(result["final_content"]) or topic
 
-            # 计算耗时（秒表）
             elapsed_time = time.perf_counter() - start_time
             info_str = (
                 f"**标题**：{title}  \n"
@@ -179,10 +177,11 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
                 info_str,
             )
 
-        except Exception as e:
+        except Exception:
+            logger.exception("写作任务失败")
             elapsed_time = time.perf_counter() - start_time
-            # ✅ 抛出 Gradio 的友好错误提示，并附带耗时
-            raise gr.Error(f"生成失败 (耗时 {elapsed_time:.2f}s): {e!s}") from e
+            # 耗时信息帮助用户区分“超时”还是“逻辑错误”。
+            raise gr.Error(f"生成失败 (耗时 {elapsed_time:.2f}s)")
 
     # 创建界面
     with gr.Blocks(title="多智能体协作写作系统") as demo:
@@ -208,7 +207,7 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
 
                 with gr.Accordion("高级设置", open=False):
                     model_select = gr.Dropdown(
-                        label="通义千问模型",
+                        label="模型",
                         choices=[
                             "qwen-turbo",
                             "qwen-plus",
@@ -216,6 +215,7 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
                             "qwen-long",
                         ],
                         value="qwen-turbo",
+                        allow_custom_value=True,
                     )
 
                     temperature_slider = gr.Slider(
@@ -235,7 +235,7 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
                     )
 
                     api_key_input = gr.Textbox(
-                        label="DashScope API Key",
+                        label="API Key",
                         type="password",
                         placeholder="sk-...",
                     )
@@ -273,7 +273,6 @@ def create_gradio_interface(system: MultiAgentWritingSystem):
                             value="*审核反馈将显示在这里*",
                         )
 
-                # ✅ 这个组件专门用来展示耗时和字数
                 info_output = gr.Markdown(
                     label="统计信息",
                     value="",
