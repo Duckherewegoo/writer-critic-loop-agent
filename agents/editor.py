@@ -3,6 +3,7 @@
 负责对文章进行最终编辑和润色，确保文章质量
 """
 
+from utils.helpers import count_words
 
 from langchain_core.language_models import BaseChatModel
 
@@ -62,7 +63,6 @@ class EditorAgent(BaseAgent):
         Returns:
             更新后的状态
         """
-        # 构建编辑提示
         editing_prompt = f"""请对以下关于"{state.topic}"的文章进行最终编辑和润色：
 
 文章内容：
@@ -79,20 +79,26 @@ class EditorAgent(BaseAgent):
 请保持文章的核心内容和观点不变，只进行形式上的优化。
 直接输出最终的文章版本，不要包含任何编辑说明。"""
 
-        # 构建上下文
+        # 审核反馈正文一并传给 LLM：reviewer 在末环提出的改进建议不应被丢弃。
+        if state.review_feedback:
+            editing_prompt += f"""
+
+审核专家的反馈意见：
+{state.review_feedback}
+
+请在润色时一并参考上述反馈，作为改进的依据。"""
+
         context = {
             "当前迭代次数": state.iteration_count,
-            "文章字数": len(state.draft_content),
+            "文章字数": count_words(state.draft_content),
             "是否经过审核": bool(state.review_feedback),
         }
 
-        # 调用LLM进行编辑
         messages = self._build_messages(editing_prompt, context)
         response = await self._call_llm(messages)
 
-        # 更新状态
         state.final_content = response
-        state.current_step = "done"
+        state.current_step = "done"  # 编辑是终态，不增加 iteration_count
         state.metadata["editor_agent_output"] = response
 
         return state

@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 
@@ -68,64 +69,20 @@ def extract_title(content: str) -> str | None:
         if not line:
             continue
 
-        # 检查是否是Markdown标题
-        if line.startswith('# '):
-            return line[2:].strip()
-        if line.startswith('## '):
-            return line[3:].strip()
+        # Markdown 标题：# ~ ######，统一剥掉井号前缀
+        heading = re.match(r"^#{1,6}\s+(.+)$", line)
+        if heading:
+            return heading.group(1).strip()
 
-        # 检查是否是加粗的标题
+        # 加粗标题：**xxx**
         if line.startswith('**') and line.endswith('**'):
             return line[2:-2].strip()
 
-        # 如果第一行不是太长，可能是标题
+        # 无标记的长句兜底：文章首行可能是纯文本标题
         if len(line) < 100 and len(line) > 5:
             return line
 
     return None
-
-
-def generate_summary(content: str, max_length: int = 200) -> str:
-    """
-    生成文章摘要
-
-    Args:
-        content: 文章内容
-        max_length: 摘要最大长度
-
-    Returns:
-        摘要文本
-    """
-    if not content:
-        return ""
-
-    # 简单的摘要生成：取前几段的开头
-    lines = content.strip().split('\n')
-    summary_parts = []
-    current_length = 0
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # 跳过标题
-        if line.startswith('#'):
-            continue
-
-        if current_length + len(line) <= max_length:
-            summary_parts.append(line)
-            current_length += len(line)
-        else:
-            remaining = max_length - current_length
-            if remaining > 20:
-                summary_parts.append(line[:remaining] + '...')
-            break
-
-        if current_length >= max_length:
-            break
-
-    return ' '.join(summary_parts)
 
 
 def save_to_file(content: str, filepath: str, encoding: str = 'utf-8') -> None:
@@ -137,8 +94,9 @@ def save_to_file(content: str, filepath: str, encoding: str = 'utf-8') -> None:
         filepath: 文件路径
         encoding: 文件编码
     """
-    # 确保目录存在
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    dirname = os.path.dirname(filepath)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
 
     with open(filepath, 'w', encoding=encoding) as f:
         f.write(content)
@@ -167,8 +125,9 @@ def save_state_to_json(state: dict, filepath: str) -> None:
         state: 状态字典
         filepath: 文件路径
     """
-    # 确保目录存在
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    dirname = os.path.dirname(filepath)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
 
     # 转换不可序列化的对象
     serializable_state = {}
@@ -184,10 +143,13 @@ def save_state_to_json(state: dict, filepath: str) -> None:
 
 def get_timestamp() -> str:
     """
-    获取当前时间戳字符串
+    获取当前 UTC 时间戳字符串，格式 YYYYmmdd_HHMMSS。
+
+    使用 UTC 避免服务器时区差异导致文件名不一致；
+    展示层如需本地时间，请自行转换。
 
     Returns:
-        时间戳字符串
+        UTC 时间戳字符串
     """
     return datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
 
